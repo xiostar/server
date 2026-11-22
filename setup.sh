@@ -1,37 +1,36 @@
 #!/usr/bin/env bash
-# Einmalige Einrichtung eines frischen Ubuntu/Debian-Servers.
+# Einrichtung eines Ubuntu/Debian-Servers. Kann gefahrlos mehrfach ausgeführt werden,
+# auch auf einem bereits eingerichteten Server (aktualisiert dann nur, was fehlt).
 #
-#   scp setup.sh root@DEINE-SERVER-IP:
-#   ssh root@DEINE-SERVER-IP
-#   bash setup.sh
+#   curl -fsSL https://raw.githubusercontent.com/xiostar/server/main/setup.sh -o setup.sh && sudo bash setup.sh
 #
-# Danach: Code wird auf GitHub gepusht -> GitHub Actions meldet sich per SSH beim
-# Server -> der Server zieht den neuen Stand von GitHub und startet die App neu.
-#
-# Das Skript kann gefahrlos mehrfach ausgeführt werden.
+# Danach: Code auf GitHub pushen. Der Server schaut jede Minute nach neuen Commits
+# auf "main", holt sie und startet die betroffene App neu. Keine Schlüssel oder
+# Secrets pro Repo nötig, nur einmal ein GitHub-Token mit Lesezugriff.
 set -euo pipefail
 
 SERVER_REPO="${SERVER_REPO:-xiostar/server}"
 DEPLOY_USER=deploy
 
-say()  { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
-ask()  { local v; read -r -p "$1" v </dev/tty; printf '%s' "$v"; }
-pause(){ read -r -p "$1 [Enter] " _ </dev/tty; }
+say() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
+ask() { local v; read -r -p "$1" v </dev/tty; printf '%s' "$v"; }
+ask_secret() { local v; read -r -s -p "$1" v </dev/tty; echo >/dev/tty; printf '%s' "$v"; }
 
-[[ $EUID -eq 0 ]] || { echo "Bitte als root ausführen (sudo bash setup.sh)"; exit 1; }
+[[ $EUID -eq 0 ]] || { echo "Bitte mit sudo ausführen: sudo bash setup.sh"; exit 1; }
 . /etc/os-release
 [[ "$ID" == ubuntu || "$ID" == debian || "${ID_LIKE:-}" == *debian* ]] || { echo "Nur Ubuntu/Debian unterstützt"; exit 1; }
 
 # ---------------------------------------------------------------- Eingaben
+FIRST_RUN=1
 if [[ -f /srv/server/.env ]]; then
+	FIRST_RUN=0
 	# shellcheck disable=SC1091
 	. /srv/server/.env
 fi
-if [[ -z "${DOMAIN:-}" ]]; then
+if [[ $FIRST_RUN -eq 1 ]]; then
 	DOMAIN="$(ask 'Domain, die schon auf diesen Server zeigt (leer lassen = erstmal nur per IP): ')"
 fi
 SERVER_IP="$(ip -4 route get 1.1.1.1 | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}')"
-[[ -n "$SERVER_IP" ]] || SERVER_IP="$(ask 'Öffentliche IP-Adresse dieses Servers: ')"
 
 # ---------------------------------------------------------------- Pakete
 say "System aktualisieren und Grundpakete installieren"
@@ -64,89 +63,101 @@ chown "$DEPLOY_USER:$DEPLOY_USER" /srv/apps /srv/data
 DH="$(getent passwd "$DEPLOY_USER" | cut -d: -f6)"
 as_deploy() { sudo -u "$DEPLOY_USER" -H "$@"; }
 
-as_deploy mkdir -p "$DH/.ssh"
-chmod 700 "$DH/.ssh"
-as_deploy touch "$DH/.ssh/known_hosts" "$DH/.ssh/config" "$DH/.ssh/authorized_keys"
-chmod 600 "$DH/.ssh/config" "$DH/.ssh/authorized_keys"
-if ! grep -q '^github.com ' "$DH/.ssh/known_hosts"; then
-	ssh-keyscan -t ed25519,rsa github.com 2>/dev/null | as_deploy tee -a "$DH/.ssh/known_hosts" >/dev/null
-fi
+# Alter Zugang für GitHub Actions (frühere Version dieses Setups) wird nicht mehr gebraucht
+if [[ -f "$DH/.ssh/authorized_keys" ]]; then sed -i '/ssh-gate/d' "$DH/.ssh/authorized_keys"; fi
+rm -f /root/github-actions-deploy-key /root/github-actions-deploy-key.pub
 
-# ---------------------------------------------------------------- Server-Repo
+# ---------------------------------------------------------------- Server-Repo (öffentlich)
 if [[ ! -d /srv/server/.git ]]; then
 	rm -rf /srv/server
 	install -d -o "$DEPLOY_USER" -g "$DEPLOY_USER" /srv/server
-	# Öffentliches Repo: ohne Schlüssel per HTTPS holen
-	GIT_TERMINAL_PROMPT=0 as_deploy git clone -q -b main "https://github.com/$SERVER_REPO.git" /srv/server 2>/dev/null || true
-fi
-if [[ ! -d /srv/server/.git ]]; then
-	say "Lese-Schlüssel für $SERVER_REPO (Repo ist privat)"
-	KEY="$DH/.ssh/github-server"
-	[[ -f "$KEY" ]] || as_deploy ssh-keygen -q -t ed25519 -N "" -C "deploy@$(hostname) $SERVER_REPO" -f "$KEY"
-	if ! grep -q '^Host github-server$' "$DH/.ssh/config"; then
-		printf '\nHost github-server\n\tHostName github.com\n\tUser git\n\tIdentityFile %s\n\tIdentitiesOnly yes\n' "$KEY" >>"$DH/.ssh/config"
-	fi
-	echo "Diesen Schlüssel in GitHub eintragen:"
-	echo "  https://github.com/$SERVER_REPO/settings/keys/new  (Titel: server, KEIN Schreibzugriff)"
-	echo
-	cat "$KEY.pub"
-	echo
-	rm -rf /srv/server
-	install -d -o "$DEPLOY_USER" -g "$DEPLOY_USER" /srv/server
-	until as_deploy git clone -q -b main "git@github-server:$SERVER_REPO.git" /srv/server; do
-		pause "Noch kein Zugriff auf $SERVER_REPO. Schlüssel eingetragen?"
-	done
+	as_deploy git clone -q -b main "https://github.com/$SERVER_REPO.git" /srv/server
+else
+	as_deploy git -C /srv/server remote set-url origin "https://github.com/$SERVER_REPO.git"
+	as_deploy git -C /srv/server fetch -q origin main
+	as_deploy git -C /srv/server reset -q --hard origin/main
 fi
 chmod +x /srv/server/bin/*
 
-if [[ -n "$DOMAIN" ]]; then printf 'DOMAIN=%s\n' "$DOMAIN"; else printf '# DOMAIN=meinedomain.de\n'; fi >/srv/server/.env
-chown "$DEPLOY_USER:$DEPLOY_USER" /srv/server/.env
-chmod 600 /srv/server/.env
+if [[ $FIRST_RUN -eq 1 ]]; then
+	if [[ -n "${DOMAIN:-}" ]]; then printf 'DOMAIN=%s\n' "$DOMAIN"; else printf '# DOMAIN=meinedomain.de\n'; fi >/srv/server/.env
+	chown "$DEPLOY_USER:$DEPLOY_USER" /srv/server/.env
+	chmod 600 /srv/server/.env
+fi
+
+# ---------------------------------------------------------------- GitHub-Token (einmalig für alle Repos)
+CRED="$DH/.git-credentials"
+as_deploy git config --global credential.helper store
+first_private="$(awk '!/^#/ && NF >= 2 { print $2; exit }' /srv/server/apps.conf)"
+token_ok() { as_deploy env GIT_TERMINAL_PROMPT=0 git ls-remote -q "https://github.com/$first_private.git" HEAD >/dev/null 2>&1; }
+if ! token_ok; then
+	say "GitHub-Token (Lesezugriff auf deine Repos)"
+	cat <<'EOF'
+Der Server braucht EINEN Token, um deine privaten Repos lesen zu können.
+So legst du ihn an (dauert 1 Minute):
+  1. https://github.com/settings/personal-access-tokens/new öffnen
+  2. Token name: server   |   Expiration: so lang wie möglich
+  3. Repository access: "All repositories"
+  4. Permissions -> Repository permissions -> Contents: "Read-only"
+  5. "Generate token" und den Token (beginnt mit github_pat_) kopieren
+Die Eingabe ist unsichtbar. Einfügen mit Rechtsklick, dann Enter.
+EOF
+	until token_ok; do
+		token="$(ask_secret 'Token: ')"
+		token="$(printf '%s' "$token" | tr -d '[:space:]')"
+		[[ -n "$token" ]] || continue
+		printf 'https://x-access-token:%s@github.com\n' "$token" >"$CRED"
+		chown "$DEPLOY_USER:$DEPLOY_USER" "$CRED"
+		chmod 600 "$CRED"
+		token_ok || echo "Damit klappt der Zugriff auf $first_private nicht. Bitte prüfen und noch einmal einfügen."
+	done
+	unset token
+	echo "Token funktioniert."
+fi
 
 # ---------------------------------------------------------------- Caddy starten
 say "Reverse-Proxy (Caddy, automatisches HTTPS) starten"
 docker network inspect web >/dev/null 2>&1 || docker network create web
-(cd /srv/server && as_deploy docker compose up -d)
+as_deploy /srv/server/bin/gen-caddy
+(cd /srv/server && as_deploy docker compose up -d --remove-orphans)
+docker exec caddy caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1 || true
 
-# ---------------------------------------------------------------- App-Schlüssel
-say "Lese-Schlüssel für die App-Repos"
-while read -r name _; do
-	[[ -z "$name" || "$name" == \#* ]] && continue
-	as_deploy /srv/server/bin/add-app "$name"
-done </srv/server/apps.conf
-echo
-pause "Bitte jeden der Schlüssel oben im jeweiligen Repo als Deploy-Key eintragen."
+# ---------------------------------------------------------------- Automatische Updates
+say "Automatische Updates einrichten (jede Minute nach neuen Commits schauen)"
+cat >/etc/systemd/system/app-poll.service <<EOF
+[Unit]
+Description=Neue Commits von GitHub holen und Apps aktualisieren
+After=docker.service network-online.target
+Wants=network-online.target
 
-# ---------------------------------------------------------------- GitHub-Actions-Zugang
-CI_KEY=/root/github-actions-deploy-key
-if [[ ! -f "$CI_KEY" ]]; then
-	ssh-keygen -q -t ed25519 -N "" -C "github-actions-deploy" -f "$CI_KEY"
-fi
-if ! grep -qF "$(cut -d' ' -f2 "$CI_KEY.pub")" "$DH/.ssh/authorized_keys"; then
-	echo "command=\"/srv/server/bin/ssh-gate\",restrict $(cat "$CI_KEY.pub")" >>"$DH/.ssh/authorized_keys"
-fi
+[Service]
+Type=oneshot
+User=$DEPLOY_USER
+ExecStart=/srv/server/bin/poll
+TimeoutStartSec=30min
+EOF
+cat >/etc/systemd/system/app-poll.timer <<'EOF'
+[Unit]
+Description=Jede Minute nach neuen Commits schauen
 
-HOSTKEY="$(cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_key.pub)"
+[Timer]
+OnBootSec=1min
+OnUnitInactiveSec=1min
 
-say "Fertig! Jetzt in JEDEM Repo (server + alle Apps) drei Secrets anlegen:"
+[Install]
+WantedBy=timers.target
+EOF
+systemctl daemon-reload
+systemctl enable --now app-poll.timer
+systemctl start app-poll.service --no-block
+
+URL="$(if [[ -n "${DOMAIN:-}" ]]; then echo "https://$DOMAIN"; else echo "http://$SERVER_IP"; fi)"
+say "Fertig!"
 cat <<EOF
-GitHub -> Repo -> Settings -> Secrets and variables -> Actions -> New repository secret
+Im Browser:            $URL
+Was passiert gerade:   journalctl -u app-poll -f
+Domain aktivieren:     sudo -u $DEPLOY_USER /srv/server/bin/set-domain meinedomain.de
+Sofort aktualisieren:  sudo -u $DEPLOY_USER /srv/server/bin/deploy <app-name>
 
-  Name: DEPLOY_HOST
-  Wert: $SERVER_IP
-
-  Name: DEPLOY_KNOWN_HOSTS
-  Wert: $SERVER_IP $HOSTKEY
-
-  Name: DEPLOY_SSH_KEY
-  Wert: (alles zwischen den Linien, inklusive BEGIN/END)
-------------------------------------------------------------------
-$(cat "$CI_KEY")
-------------------------------------------------------------------
-
-Danach $CI_KEY auf dem Server löschen:   rm $CI_KEY
-
-Test im Browser:  $(if [[ -n "$DOMAIN" ]]; then echo "https://$DOMAIN"; else echo "http://$SERVER_IP"; fi)
-Domain später aktivieren:  sudo -u $DEPLOY_USER /srv/server/bin/set-domain meinedomain.de
-Manuelles Update: sudo -u $DEPLOY_USER /srv/server/bin/deploy <app-name>
+Neue App: eine Zeile in apps.conf (Repo xiostar/server) – der Rest passiert automatisch.
 EOF

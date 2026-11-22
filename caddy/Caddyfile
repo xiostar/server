@@ -2,50 +2,18 @@
 # DOMAIN kommt aus /srv/server/.env (setzen mit: bin/set-domain meinedomain.de).
 # Ohne DOMAIN läuft der Server per HTTP auf der IP-Adresse (http://SERVER-IP/).
 #
-# Jede App bekommt einen Pfad. Der Pfad wird NICHT abgeschnitten, die App muss also
-# unter /<name>/ antworten (im Container steht dafür BASE_PATH=/<name> bereit).
-# Alle Apps lauschen im Container auf Port 8080.
+# Die Regeln für die einzelnen Apps (apps.caddy) und die Startseite (www/) erzeugt
+# bin/gen-caddy automatisch aus apps.conf. Jede App bekommt den Pfad /<name>/,
+# der Pfad wird NICHT abgeschnitten (im Container steht BASE_PATH=/<name> bereit),
+# und die App lauscht im Container auf Port 8080.
 
 {$DOMAIN::80} {
 	encode zstd gzip
 
-	redir /dart-karriere /dart-karriere/
-	handle /dart-karriere/* {
-		reverse_proxy dart-karriere:8080
-	}
-
-	redir /getraenkeliste /getraenkeliste/
-	handle /getraenkeliste/* {
-		reverse_proxy getraenkeliste:8080
-	}
-
-	redir /oink-oink-liste /oink-oink-liste/
-	handle /oink-oink-liste/* {
-		reverse_proxy oink-oink-liste:8080
-	}
-
-	redir /spesenabrechnung /spesenabrechnung/
-	handle /spesenabrechnung/* {
-		reverse_proxy spesenabrechnung:8080
-	}
-
-	redir /stempelzeitkontrolle /stempelzeitkontrolle/
-	handle /stempelzeitkontrolle/* {
-		reverse_proxy stempelzeitkontrolle:8080
-	}
+	import apps.caddy
 
 	handle {
-		header Content-Type "text/html; charset=utf-8"
-		respond <<HTML
-			<!doctype html><meta charset="utf-8"><title>Server</title>
-			<h1>Server läuft</h1>
-			<ul>
-			<li><a href="/dart-karriere/">Dart-Karriere</a></li>
-			<li><a href="/getraenkeliste/">Getränkeliste</a></li>
-			<li><a href="/oink-oink-liste/">Oink-Oink-Liste</a></li>
-			<li><a href="/spesenabrechnung/">Spesenabrechnung</a></li>
-			<li><a href="/stempelzeitkontrolle/">Stempelzeitkontrolle</a></li>
-			</ul>
-			HTML 200
+		root * /etc/caddy/www
+		file_server
 	}
 }

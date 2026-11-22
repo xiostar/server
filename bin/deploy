@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Holt den neuesten Stand einer App (oder dieses Server-Repos) von GitHub und startet sie neu.
 #   bin/deploy <app-name>   z.B. bin/deploy getraenkeliste
-#   bin/deploy server       aktualisiert /srv/server selbst und lädt Caddy neu
-# Läuft als Benutzer "deploy". Wird von GitHub Actions über SSH aufgerufen (siehe bin/ssh-gate).
+#   bin/deploy server       aktualisiert /srv/server selbst, die Proxy-Konfiguration und Caddy
+# Läuft als Benutzer "deploy". Wird automatisch von bin/poll aufgerufen, geht aber auch von Hand.
 
 # Alles steckt in main(), damit bash das Skript komplett einliest, bevor
 # "git reset" diese Datei beim Selbst-Update überschreibt.
@@ -11,6 +11,7 @@ main() {
 
 	local SERVER_DIR=/srv/server
 	local APPS_DIR=/srv/apps
+	local STATE_DIR=/srv/apps/.state
 	local BRANCH=main
 	local app="${1:-}"
 
@@ -18,10 +19,11 @@ main() {
 		echo "Aufruf: deploy <app-name>|server" >&2
 		exit 2
 	fi
+	mkdir -p "$STATE_DIR"
 
 	# Nur ein Deploy gleichzeitig
 	exec 9>/tmp/deploy.lock
-	flock -w 600 9
+	flock -w 1800 9
 
 	echo "==> Deploy '$app' gestartet: $(date -Is)"
 
@@ -29,8 +31,11 @@ main() {
 		cd "$SERVER_DIR"
 		git fetch --quiet origin "$BRANCH"
 		git reset --hard --quiet "origin/$BRANCH"
+		chmod +x bin/*
+		bin/gen-caddy
 		docker compose up -d --remove-orphans
 		docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile
+		git rev-parse HEAD >"$STATE_DIR/server.deployed"
 		echo "==> Server-Konfiguration aktualisiert auf $(git rev-parse --short HEAD)"
 		return
 	fi
@@ -43,12 +48,19 @@ main() {
 	fi
 
 	local dir="$APPS_DIR/$app"
+	local url="https://github.com/$repo.git"
 	if [[ ! -d "$dir/.git" ]]; then
-		git clone --quiet -b "$BRANCH" "git@github-$app:$repo.git" "$dir"
+		git clone --quiet -b "$BRANCH" "$url" "$dir"
 	fi
 	cd "$dir"
+	git remote set-url origin "$url"
 	git fetch --quiet origin "$BRANCH"
 	git reset --hard --quiet "origin/$BRANCH"
+	local rev
+	rev="$(git rev-parse HEAD)"
+
+	# Schlägt der Build fehl, merken wir uns den Commit, damit bin/poll es nicht jede Minute neu versucht.
+	trap 'echo "$rev" >"$STATE_DIR/$app.failed"; echo "==> FEHLER: $app ($rev) konnte nicht gestartet werden" >&2' ERR
 
 	mkdir -p "/srv/data/$app"
 
@@ -56,11 +68,14 @@ main() {
 		APP_NAME="$app" APP_UID="$(id -u)" APP_GID="$(id -g)" docker compose -p "$app" up -d --build --remove-orphans
 	else
 		echo "Keine compose.yaml in $repo gefunden – nichts zu starten." >&2
-		exit 1
+		false
 	fi
 
+	trap - ERR
+	echo "$rev" >"$STATE_DIR/$app.deployed"
+	rm -f "$STATE_DIR/$app.failed"
 	docker image prune -f >/dev/null
-	echo "==> '$app' läuft jetzt mit Stand $(git rev-parse --short HEAD)"
+	echo "==> '$app' läuft jetzt mit Stand ${rev:0:7}"
 }
 
 main "$@"

@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Schaut nach, ob es auf GitHub neue Commits auf "main" gibt, und rollt sie aus.
+# Läuft jede Minute über den systemd-Timer app-poll.timer (als Benutzer "deploy").
+# Log ansehen: journalctl -u app-poll -f
+
+main() {
+	set -uo pipefail
+
+	local SERVER_DIR=/srv/server
+	local STATE_DIR=/srv/apps/.state
+	mkdir -p "$STATE_DIR"
+
+	# Läuft schon ein Durchgang (z.B. ein langer Build)? Dann diesmal aussetzen.
+	exec 8>/tmp/poll.lock
+	flock -n 8 || exit 0
+
+	remote_rev() { GIT_TERMINAL_PROMPT=0 git ls-remote "$1" refs/heads/main 2>/dev/null | cut -f1; }
+	state() { cat "$STATE_DIR/$1" 2>/dev/null || true; }
+
+	# 1) Server-Konfiguration selbst (apps.conf, Caddy, Skripte)
+	local rev
+	rev="$(remote_rev "$(git -C "$SERVER_DIR" remote get-url origin)")"
+	if [[ -n "$rev" && "$rev" != "$(state server.deployed)" && "$rev" != "$(state server.failed)" ]]; then
+		"$SERVER_DIR/bin/deploy" server || echo "$rev" >"$STATE_DIR/server.failed"
+	fi
+
+	# 2) Alle Apps aus apps.conf
+	local name repo
+	while read -r name repo _; do
+		[[ -z "$name" || "$name" == \#* || -z "${repo:-}" ]] && continue
+		rev="$(remote_rev "https://github.com/$repo.git")"
+		if [[ -z "$rev" ]]; then
+			# leeres Repo oder kein Zugriff: still überspringen, aber einmal melden
+			[[ -f "$STATE_DIR/$name.unreachable" ]] || { echo "Hinweis: $repo nicht erreichbar oder noch leer"; touch "$STATE_DIR/$name.unreachable"; }
+			continue
+		fi
+		rm -f "$STATE_DIR/$name.unreachable"
+		[[ "$rev" == "$(state "$name.deployed")" || "$rev" == "$(state "$name.failed")" ]] && continue
+		"$SERVER_DIR/bin/deploy" "$name" || true
+	done <"$SERVER_DIR/apps.conf"
+}
+
+main "$@"
+exit
