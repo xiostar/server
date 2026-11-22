@@ -44,7 +44,7 @@ main() {
 
 	local dir="$APPS_DIR/$app"
 	if [[ ! -d "$dir/.git" ]]; then
-		git clone --quiet "git@github-$app:$repo.git" "$dir"
+		git clone --quiet -b "$BRANCH" "git@github-$app:$repo.git" "$dir"
 	fi
 	cd "$dir"
 	git fetch --quiet origin "$BRANCH"

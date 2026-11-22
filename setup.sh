@@ -87,7 +87,7 @@ if [[ ! -d /srv/server/.git ]]; then
 	echo
 	rm -rf /srv/server
 	install -d -o "$DEPLOY_USER" -g "$DEPLOY_USER" /srv/server
-	until as_deploy git clone -q "git@github-server:$SERVER_REPO.git" /srv/server; do
+	until as_deploy git clone -q -b main "git@github-server:$SERVER_REPO.git" /srv/server; do
 		pause "Noch kein Zugriff auf $SERVER_REPO. Schlüssel eingetragen?"
 	done
 fi
