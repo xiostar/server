@@ -74,7 +74,13 @@ fi
 
 # ---------------------------------------------------------------- Server-Repo
 if [[ ! -d /srv/server/.git ]]; then
-	say "Lese-Schlüssel für $SERVER_REPO"
+	rm -rf /srv/server
+	install -d -o "$DEPLOY_USER" -g "$DEPLOY_USER" /srv/server
+	# Öffentliches Repo: ohne Schlüssel per HTTPS holen
+	GIT_TERMINAL_PROMPT=0 as_deploy git clone -q -b main "https://github.com/$SERVER_REPO.git" /srv/server 2>/dev/null || true
+fi
+if [[ ! -d /srv/server/.git ]]; then
+	say "Lese-Schlüssel für $SERVER_REPO (Repo ist privat)"
 	KEY="$DH/.ssh/github-server"
 	[[ -f "$KEY" ]] || as_deploy ssh-keygen -q -t ed25519 -N "" -C "deploy@$(hostname) $SERVER_REPO" -f "$KEY"
 	if ! grep -q '^Host github-server$' "$DH/.ssh/config"; then
