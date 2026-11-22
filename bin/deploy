@@ -53,7 +53,7 @@ main() {
 	mkdir -p "/srv/data/$app"
 
 	if [[ -f compose.yaml || -f docker-compose.yml || -f compose.yml || -f docker-compose.yaml ]]; then
-		APP_NAME="$app" docker compose -p "$app" up -d --build --remove-orphans
+		APP_NAME="$app" APP_UID="$(id -u)" APP_GID="$(id -g)" docker compose -p "$app" up -d --build --remove-orphans
 	else
 		echo "Keine compose.yaml in $repo gefunden – nichts zu starten." >&2
 		exit 1

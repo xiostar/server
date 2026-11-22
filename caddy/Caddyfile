@@ -9,6 +9,11 @@
 {$DOMAIN::80} {
 	encode zstd gzip
 
+	redir /dart-karriere /dart-karriere/
+	handle /dart-karriere/* {
+		reverse_proxy dart-karriere:8080
+	}
+
 	redir /getraenkeliste /getraenkeliste/
 	handle /getraenkeliste/* {
 		reverse_proxy getraenkeliste:8080
@@ -35,6 +40,7 @@
 			<!doctype html><meta charset="utf-8"><title>Server</title>
 			<h1>Server läuft</h1>
 			<ul>
+			<li><a href="/dart-karriere/">Dart-Karriere</a></li>
 			<li><a href="/getraenkeliste/">Getränkeliste</a></li>
 			<li><a href="/oink-oink-liste/">Oink-Oink-Liste</a></li>
 			<li><a href="/spesenabrechnung/">Spesenabrechnung</a></li>
