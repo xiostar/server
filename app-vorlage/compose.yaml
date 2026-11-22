@@ -1,0 +1,21 @@
+# Wird auf dem Server von /srv/server/bin/deploy mit "docker compose up -d --build" gestartet.
+# Regeln für jede App:
+#  - Container heißt wie die App und hängt im Netzwerk "web" (dort findet Caddy ihn)
+#  - Die App lauscht im Container auf Port 8080
+#  - Sie ist unter https://DOMAIN/__APP__/ erreichbar, BASE_PATH sagt ihr den Pfad
+#  - Dauerhafte Daten (z.B. SQLite-Datenbank) nach /data schreiben -> liegt auf dem Server in /srv/data/__APP__
+services:
+  app:
+    build: .
+    container_name: __APP__
+    restart: unless-stopped
+    environment:
+      BASE_PATH: /__APP__
+    volumes:
+      - /srv/data/__APP__:/data
+    networks:
+      - web
+
+networks:
+  web:
+    external: true

@@ -1,0 +1,28 @@
+# Bei jedem Push auf main meldet sich GitHub per SSH beim Server.
+# Der Server zieht dann selbst den neuen Stand von GitHub und startet die App neu.
+# Benötigte Secrets (Werte gibt setup.sh aus): DEPLOY_HOST, DEPLOY_KNOWN_HOSTS, DEPLOY_SSH_KEY
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Auf Server ausrollen
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh -o BatchMode=yes deploy@"$HOST" "deploy __APP__"

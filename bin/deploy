@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# Holt den neuesten Stand einer App (oder dieses Server-Repos) von GitHub und startet sie neu.
+#   bin/deploy <app-name>   z.B. bin/deploy getraenkeliste
+#   bin/deploy server       aktualisiert /srv/server selbst und lädt Caddy neu
+# Läuft als Benutzer "deploy". Wird von GitHub Actions über SSH aufgerufen (siehe bin/ssh-gate).
+
+# Alles steckt in main(), damit bash das Skript komplett einliest, bevor
+# "git reset" diese Datei beim Selbst-Update überschreibt.
+main() {
+	set -euo pipefail
+
+	local SERVER_DIR=/srv/server
+	local APPS_DIR=/srv/apps
+	local BRANCH=main
+	local app="${1:-}"
+
+	if [[ ! "$app" =~ ^[a-z0-9-]+$ ]]; then
+		echo "Aufruf: deploy <app-name>|server" >&2
+		exit 2
+	fi
+
+	# Nur ein Deploy gleichzeitig
+	exec 9>/tmp/deploy.lock
+	flock -w 600 9
+
+	echo "==> Deploy '$app' gestartet: $(date -Is)"
+
+	if [[ "$app" == server ]]; then
+		cd "$SERVER_DIR"
+		git fetch --quiet origin "$BRANCH"
+		git reset --hard --quiet "origin/$BRANCH"
+		docker compose up -d --remove-orphans
+		docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile
+		echo "==> Server-Konfiguration aktualisiert auf $(git rev-parse --short HEAD)"
+		return
+	fi
+
+	local repo
+	repo="$(awk -v n="$app" '$1 == n { print $2 }' "$SERVER_DIR/apps.conf")"
+	if [[ -z "$repo" ]]; then
+		echo "Unbekannte App '$app' (nicht in apps.conf)" >&2
+		exit 2
+	fi
+
+	local dir="$APPS_DIR/$app"
+	if [[ ! -d "$dir/.git" ]]; then
+		git clone --quiet "git@github-$app:$repo.git" "$dir"
+	fi
+	cd "$dir"
+	git fetch --quiet origin "$BRANCH"
+	git reset --hard --quiet "origin/$BRANCH"
+
+	mkdir -p "/srv/data/$app"
+
+	if [[ -f compose.yaml || -f docker-compose.yml || -f compose.yml || -f docker-compose.yaml ]]; then
+		APP_NAME="$app" docker compose -p "$app" up -d --build --remove-orphans
+	else
+		echo "Keine compose.yaml in $repo gefunden – nichts zu starten." >&2
+		exit 1
+	fi
+
+	docker image prune -f >/dev/null
+	echo "==> '$app' läuft jetzt mit Stand $(git rev-parse --short HEAD)"
+}
+
+main "$@"
+exit

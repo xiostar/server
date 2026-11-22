@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Interner Helfer: erzeugt (falls nötig) einen Lese-Schlüssel für ein GitHub-Repo
+# und trägt einen SSH-Host-Alias "github-<name>" in ~/.ssh/config ein.
+# GitHub erlaubt jeden Deploy-Key nur in EINEM Repo, daher ein Schlüssel pro Repo.
+set -euo pipefail
+
+name="$1"
+repo="$2"
+key="$HOME/.ssh/github-$name"
+
+mkdir -p "$HOME/.ssh"
+chmod 700 "$HOME/.ssh"
+
+if [[ ! -f "$key" ]]; then
+	ssh-keygen -q -t ed25519 -N "" -C "deploy@$(hostname) $repo" -f "$key"
+fi
+
+touch "$HOME/.ssh/config"
+chmod 600 "$HOME/.ssh/config"
+if ! grep -q "^Host github-$name\$" "$HOME/.ssh/config"; then
+	cat >>"$HOME/.ssh/config" <<EOF
+
+Host github-$name
+	HostName github.com
+	User git
+	IdentityFile $key
+	IdentitiesOnly yes
+EOF
+fi
+
+echo
+echo "------------------------------------------------------------------"
+echo " Deploy-Key für $repo"
+echo " GitHub: https://github.com/$repo/settings/keys/new"
+echo " Titel: server   |   'Allow write access' NICHT anhaken"
+echo "------------------------------------------------------------------"
+cat "$key.pub"
