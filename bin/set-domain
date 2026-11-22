@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Schaltet HTTPS für eine Domain ein (vorher A-Record der Domain auf die Server-IP setzen!).
+#   sudo -u deploy /srv/server/bin/set-domain meinedomain.de
+# Ohne Argument: zurück auf "nur per IP" (HTTP).
+set -euo pipefail
+
+domain="${1:-}"
+if [[ -n "$domain" && ! "$domain" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?\.[a-z]{2,}$ ]]; then
+	echo "Ungültige Domain: $domain" >&2
+	exit 2
+fi
+
+cd /srv/server
+if [[ -n "$domain" ]]; then
+	ip="$(getent ahostsv4 "$domain" | awk 'NR == 1 { print $1 }')"
+	echo "DNS: $domain -> ${ip:-(nicht gefunden)}"
+	printf 'DOMAIN=%s\n' "$domain" >.env
+else
+	printf '# DOMAIN=meinedomain.de\n' >.env
+fi
+chmod 600 .env
+
+# .env wird nur beim Neuanlegen des Containers gelesen
+docker compose up -d --force-recreate caddy
+echo "Fertig. Caddy holt das Zertifikat jetzt automatisch (Logs: docker logs -f caddy)."

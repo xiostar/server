@@ -1,15 +1,12 @@
 # Reverse-Proxy mit automatischem HTTPS (Let's Encrypt).
-# DOMAIN und ACME_EMAIL kommen aus /srv/server/.env
+# DOMAIN kommt aus /srv/server/.env (setzen mit: bin/set-domain meinedomain.de).
+# Ohne DOMAIN läuft der Server per HTTP auf der IP-Adresse (http://SERVER-IP/).
 #
 # Jede App bekommt einen Pfad. Der Pfad wird NICHT abgeschnitten, die App muss also
 # unter /<name>/ antworten (im Container steht dafür BASE_PATH=/<name> bereit).
 # Alle Apps lauschen im Container auf Port 8080.
 
-{
-	email {$ACME_EMAIL}
-}
-
-{$DOMAIN} {
+{$DOMAIN::80} {
 	encode zstd gzip
 
 	redir /getraenkeliste /getraenkeliste/

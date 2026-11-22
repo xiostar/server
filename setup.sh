@@ -27,9 +27,11 @@ if [[ -f /srv/server/.env ]]; then
 	# shellcheck disable=SC1091
 	. /srv/server/.env
 fi
-DOMAIN="${DOMAIN:-$(ask 'Domain, die auf diesen Server zeigt (z.B. meinedomain.de): ')}"
-ACME_EMAIL="${ACME_EMAIL:-$(ask 'E-Mail für Let'\''s-Encrypt-Zertifikate: ')}"
-[[ -n "$DOMAIN" && -n "$ACME_EMAIL" ]] || { echo "Domain und E-Mail sind Pflicht"; exit 1; }
+if [[ -z "${DOMAIN:-}" ]]; then
+	DOMAIN="$(ask 'Domain, die schon auf diesen Server zeigt (leer lassen = erstmal nur per IP): ')"
+fi
+SERVER_IP="$(ip -4 route get 1.1.1.1 | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}')"
+[[ -n "$SERVER_IP" ]] || SERVER_IP="$(ask 'Öffentliche IP-Adresse dieses Servers: ')"
 
 # ---------------------------------------------------------------- Pakete
 say "System aktualisieren und Grundpakete installieren"
@@ -91,7 +93,7 @@ if [[ ! -d /srv/server/.git ]]; then
 fi
 chmod +x /srv/server/bin/*
 
-printf 'DOMAIN=%s\nACME_EMAIL=%s\n' "$DOMAIN" "$ACME_EMAIL" >/srv/server/.env
+if [[ -n "$DOMAIN" ]]; then printf 'DOMAIN=%s\n' "$DOMAIN"; else printf '# DOMAIN=meinedomain.de\n'; fi >/srv/server/.env
 chown "$DEPLOY_USER:$DEPLOY_USER" /srv/server/.env
 chmod 600 /srv/server/.env
 
@@ -125,10 +127,10 @@ cat <<EOF
 GitHub -> Repo -> Settings -> Secrets and variables -> Actions -> New repository secret
 
   Name: DEPLOY_HOST
-  Wert: $DOMAIN
+  Wert: $SERVER_IP
 
   Name: DEPLOY_KNOWN_HOSTS
-  Wert: $DOMAIN $HOSTKEY
+  Wert: $SERVER_IP $HOSTKEY
 
   Name: DEPLOY_SSH_KEY
   Wert: (alles zwischen den Linien, inklusive BEGIN/END)
@@ -138,6 +140,7 @@ $(cat "$CI_KEY")
 
 Danach $CI_KEY auf dem Server löschen:   rm $CI_KEY
 
-Test im Browser:  https://$DOMAIN
+Test im Browser:  $(if [[ -n "$DOMAIN" ]]; then echo "https://$DOMAIN"; else echo "http://$SERVER_IP"; fi)
+Domain später aktivieren:  sudo -u $DEPLOY_USER /srv/server/bin/set-domain meinedomain.de
 Manuelles Update: sudo -u $DEPLOY_USER /srv/server/bin/deploy <app-name>
 EOF
