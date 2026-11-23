@@ -15,8 +15,10 @@ import hosts.caddy
 
 	import apps.caddy
 
+	# Startseite ohne App-Liste: nur eine leere Seite (Apps bleiben unter /<name>/ erreichbar).
+	# Die Linkliste erzeugt bin/gen-caddy weiterhin in caddy/www/, sie wird nur nicht mehr ausgeliefert.
 	handle {
-		root * /etc/caddy/www
-		file_server
+		header Content-Type "text/html; charset=utf-8"
+		respond "<!doctype html><title></title>" 200
 	}
 }

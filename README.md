@@ -35,7 +35,7 @@ Das Skript kann jederzeit erneut ausgeführt werden, zum Beispiel um einen abgel
 ## Neue App hinzufügen
 
 1. In [`apps.conf`](apps.conf) eine Zeile ergänzen: `name  xiostar/repo  Titel`
-2. Pushen. Innerhalb einer Minute richtet der Server die Proxy-Regel und den Link auf der Startseite ein und startet die App.
+2. Pushen. Innerhalb einer Minute richtet der Server die Proxy-Regel ein und startet die App. Die Startseite des Servers bleibt absichtlich leer (keine App-Liste).
 
 Sonst ist nichts nötig. Wie eine App aufgebaut sein muss, zeigt der Ordner [`app-vorlage/`](app-vorlage/):
 
