@@ -61,6 +61,17 @@ Beispiel: `oche-legacy.casiotc.eu` führt direkt zu Dart-Karriere.
 
 Die bisherige Adresse `/<name>/` funktioniert weiterhin. Steht statt des App-Namens ein `-`, zeigt die Adresse nur eine leere Seite (z. B. für die Hauptdomain).
 
+### Zugangspasswort (einmal eingeben, dann ein Jahr Ruhe)
+
+Steht in `domains.conf` hinter der App das Wort `gate`, fragt die Adresse beim ersten Besuch nach einem Passwort. Danach merkt sich der Browser den Zugang etwa ein Jahr lang, für alle Unteradressen der Domain.
+
+```bash
+sudo -u deploy /srv/server/bin/set-gate 'ein langes passwort'   # einschalten bzw. ändern
+sudo -u deploy /srv/server/bin/set-gate                         # ausschalten
+```
+
+Gespeichert wird nur eine Prüfsumme in `/srv/server/.env`, nie das Passwort selbst. Solange kein Passwort gesetzt ist, bleibt die Seite offen. Wer das Passwort ändert, muss es auf allen Geräten neu eingeben.
+
 ## Geheime Einstellungen einer App
 
 Eine Datei `.env` im App-Ordner auf dem Server wird beim Start gelesen und nie zu GitHub hochgeladen, z. B. der Einladungscode für Dart-Karriere:

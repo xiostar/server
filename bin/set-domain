@@ -11,13 +11,17 @@ if [[ -n "$domain" && ! "$domain" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?\.[a-z]{2,}$
 fi
 
 cd /srv/server
+# Andere Einträge (z. B. GATE_HASH vom Passwortschutz) bleiben erhalten
+touch .env
+grep -v -e '^DOMAIN=' -e '^# DOMAIN=' .env >.env.tmp || true
 if [[ -n "$domain" ]]; then
 	ip="$(getent ahostsv4 "$domain" | awk 'NR == 1 { print $1 }')"
 	echo "DNS: $domain -> ${ip:-(nicht gefunden)}"
-	printf 'DOMAIN=%s\n' "$domain" >.env
+	printf 'DOMAIN=%s\n' "$domain" >>.env.tmp
 else
-	printf '# DOMAIN=meinedomain.de\n' >.env
+	printf '# DOMAIN=meinedomain.de\n' >>.env.tmp
 fi
+mv .env.tmp .env
 chmod 600 .env
 
 # .env wird nur beim Neuanlegen des Containers gelesen

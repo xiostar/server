@@ -30,10 +30,15 @@ mv "$out.tmp" "$out"
 
 # Eigene Adressen aus domains.conf: je Adresse ein eigener Site-Block mit HTTPS
 hosts="$dir/caddy/hosts.caddy"
+# Zugangspasswort (nur die Prüfsumme) aus .env, gesetzt mit bin/set-gate
+gate_hash=""
+if [[ -f "$dir/.env" ]]; then
+	gate_hash="$(sed -n 's/^GATE_HASH=\([0-9a-f]\{64\}\)$/\1/p' "$dir/.env" | tail -1)"
+fi
 {
 	echo "# Automatisch erzeugt aus domains.conf von bin/gen-caddy – nicht von Hand ändern."
 	if [[ -f "$dir/domains.conf" ]]; then
-		while read -r host name _; do
+		while read -r host name opt _; do
 			[[ -z "$host" || "$host" == \#* || -z "${name:-}" ]] && continue
 			[[ "$host" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?\.[a-z]{2,}$ ]] || { echo "Ungültige Adresse in domains.conf: $host" >&2; exit 1; }
 			# "-" statt App-Name: Adresse zeigt nur eine leere Seite
@@ -48,6 +53,37 @@ EOF
 				continue
 			fi
 			awk -v n="$name" '$1 == n { found = 1 } END { exit !found }' "$conf" || { echo "domains.conf: App '$name' steht nicht in apps.conf" >&2; exit 1; }
+			# "gate": erst nach Eingabe des Zugangspassworts (einmalig, Cookie gilt etwa ein Jahr)
+			if [[ "${opt:-}" == gate ]]; then
+				if [[ -z "$gate_hash" ]]; then
+					echo "Hinweis: $host soll geschützt werden, aber es ist kein Passwort gesetzt (bin/set-gate). Seite bleibt offen." >&2
+				else
+					cat <<EOF
+
+$host {
+	encode zstd gzip
+	@gesperrt not header_regexp Cookie "(^|; ?)gate=$gate_hash(;|\$)"
+	handle @gesperrt {
+		header Cache-Control "no-store"
+		root * /etc/caddy/gate
+		rewrite * /gate.html
+		file_server
+	}
+	handle {
+		redir / /$name/
+		redir /$name /$name/
+		handle /$name/* {
+			reverse_proxy $name:8080
+		}
+		handle {
+			redir * /$name/
+		}
+	}
+}
+EOF
+					continue
+				fi
+			fi
 			cat <<EOF
 
 $host {
