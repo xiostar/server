@@ -36,6 +36,17 @@ hosts="$dir/caddy/hosts.caddy"
 		while read -r host name _; do
 			[[ -z "$host" || "$host" == \#* || -z "${name:-}" ]] && continue
 			[[ "$host" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?\.[a-z]{2,}$ ]] || { echo "Ungültige Adresse in domains.conf: $host" >&2; exit 1; }
+			# "-" statt App-Name: Adresse zeigt nur eine leere Seite
+			if [[ "$name" == "-" ]]; then
+				cat <<EOF
+
+$host {
+	header Content-Type "text/html; charset=utf-8"
+	respond "<!doctype html><title></title>" 200
+}
+EOF
+				continue
+			fi
 			awk -v n="$name" '$1 == n { found = 1 } END { exit !found }' "$conf" || { echo "domains.conf: App '$name' steht nicht in apps.conf" >&2; exit 1; }
 			cat <<EOF
 

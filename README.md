@@ -59,7 +59,7 @@ Beispiel: `oche-legacy.casiotc.eu` führt direkt zu Dart-Karriere.
 2. In [`domains.conf`](domains.conf) eine Zeile ergänzen: `adresse  app-name` und pushen.
 3. Innerhalb einer Minute richtet der Server die Adresse ein, Caddy holt das HTTPS-Zertifikat selbst.
 
-Die bisherige Adresse `/<name>/` funktioniert weiterhin.
+Die bisherige Adresse `/<name>/` funktioniert weiterhin. Steht statt des App-Namens ein `-`, zeigt die Adresse nur eine leere Seite (z. B. für die Hauptdomain).
 
 ## Geheime Einstellungen einer App
 
