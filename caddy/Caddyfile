@@ -7,6 +7,9 @@
 # der Pfad wird NICHT abgeschnitten (im Container steht BASE_PATH=/<name> bereit),
 # und die App lauscht im Container auf Port 8080.
 
+# Eigene Adressen einzelner Apps (aus domains.conf), jeweils mit eigenem HTTPS-Zertifikat
+import hosts.caddy
+
 {$DOMAIN::80} {
 	encode zstd gzip
 

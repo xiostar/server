@@ -51,6 +51,25 @@ Dauerhafte Daten (z.B. eine SQLite-Datenbank) gehören nach `/data` im Container
 1. Beim Domain-Anbieter einen **A-Record** anlegen: Name `@`, Wert = IP des Servers.
 2. Auf dem Server: `sudo -u deploy /srv/server/bin/set-domain meinedomain.de`
 
+## Eigene Adresse für eine App (Subdomain)
+
+Beispiel: `oche-legacy.casiotc.eu` führt direkt zu Dart-Karriere.
+
+1. Beim Domain-Anbieter für die Subdomain einen **A-Record** auf die Server-IP setzen.
+2. In [`domains.conf`](domains.conf) eine Zeile ergänzen: `adresse  app-name` und pushen.
+3. Innerhalb einer Minute richtet der Server die Adresse ein, Caddy holt das HTTPS-Zertifikat selbst.
+
+Die bisherige Adresse `/<name>/` funktioniert weiterhin.
+
+## Geheime Einstellungen einer App
+
+Eine Datei `.env` im App-Ordner auf dem Server wird beim Start gelesen und nie zu GitHub hochgeladen, z. B. der Einladungscode für Dart-Karriere:
+
+```bash
+echo 'INVITE_CODE=MEINCODE' | sudo -u deploy tee /srv/apps/dart-karriere/.env
+sudo -u deploy /srv/server/bin/deploy dart-karriere
+```
+
 ## Nützliche Befehle auf dem Server
 
 ```bash

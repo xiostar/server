@@ -1,3 +1,4 @@
 .env
 caddy/apps.caddy
+caddy/hosts.caddy
 caddy/www/
