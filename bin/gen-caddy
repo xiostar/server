@@ -62,7 +62,11 @@ EOF
 
 $host {
 	encode zstd gzip
-	@gesperrt not header_regexp Cookie "(^|; ?)gate=$gate_hash(;|\$)"
+	# App-Beschreibung und Icons ohne Passwort: Browser laden sie ohne Cookie (sonst lässt sich die App nicht installieren)
+	@gesperrt {
+		not header_regexp Cookie "(^|; ?)gate=$gate_hash(;|\$)"
+		not path /$name/manifest.webmanifest /$name/icon.svg /$name/icon-192.png /$name/icon-512.png /$name/icon-maskable-512.png /$name/apple-touch-icon.png
+	}
 	handle @gesperrt {
 		header Cache-Control "no-store"
 		root * /etc/caddy/gate
