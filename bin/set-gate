@@ -1,22 +1,32 @@
 #!/usr/bin/env bash
-# Legt das Zugangspasswort für Adressen mit "gate" in domains.conf fest.
-#   sudo -u deploy /srv/server/bin/set-gate 'mein langes passwort'
-# Ohne Argument: Passwortschutz wieder abschalten.
+# Legt das Zugangspasswort für Adressen mit "gate" bzw. "gate=name" in domains.conf fest.
+#   sudo -u deploy /srv/server/bin/set-gate 'mein langes passwort'                   # gemeinsames Passwort ("gate")
+#   sudo -u deploy /srv/server/bin/set-gate -n stundenanker 'anderes passwort'      # eigenes Passwort ("gate=stundenanker")
+# Ohne Passwort: Passwortschutz (gemeinsam bzw. mit -n diesen einen) wieder abschalten.
 # Gespeichert wird nur eine Prüfsumme (SHA-256) in /srv/server/.env, nie das Passwort selbst.
 set -euo pipefail
+
+name=""
+if [[ "${1:-}" == "-n" ]]; then
+	name="${2:-}"
+	[[ "$name" =~ ^[a-z0-9-]+$ ]] || { echo "Name bitte nur aus a-z, 0-9 und - (z. B. stundenanker)" >&2; exit 2; }
+	shift 2
+fi
+var=GATE_HASH
+[[ -n "$name" ]] && var="GATE_HASH_$(printf '%s' "$name" | tr 'a-z-' 'A-Z_')"
+
 cd /srv/server
 touch .env
-grep -v '^GATE_HASH=' .env >.env.tmp || true
+grep -v "^$var=" .env >.env.tmp || true
 if [[ -n "${1:-}" ]]; then
 	hash="$(printf '%s' "$1" | sha256sum | awk '{ print $1 }')"
-	printf 'GATE_HASH=%s\n' "$hash" >>.env.tmp
-	echo "Passwortschutz eingeschaltet."
+	printf '%s=%s\n' "$var" "$hash" >>.env.tmp
+	echo "Passwortschutz ${name:+„$name“ }eingeschaltet."
 else
-	echo "Passwortschutz ausgeschaltet."
+	echo "Passwortschutz ${name:+„$name“ }ausgeschaltet."
 fi
 mv .env.tmp .env
 chmod 600 .env
 bin/gen-caddy
-# .env wird nur beim Neuanlegen des Containers gelesen
-docker compose up -d --force-recreate caddy
-echo "Fertig. Wer die Seite öffnet, muss das Passwort einmal eingeben (gilt etwa ein Jahr)."
+docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile
+echo "Fertig. Wer die Adresse öffnet, muss das Passwort einmal eingeben (gilt etwa ein Jahr)."

@@ -72,6 +72,17 @@ sudo -u deploy /srv/server/bin/set-gate                         # ausschalten
 
 Gespeichert wird nur eine Prüfsumme in `/srv/server/.env`, nie das Passwort selbst. Solange kein Passwort gesetzt ist, bleibt die Seite offen. Wer das Passwort ändert, muss es auf allen Geräten neu eingeben.
 
+**Eigenes Passwort pro Adresse:** Statt `gate` steht `gate=NAME` in `domains.conf`, z. B. `gate=stundenanker`. Das Passwort dafür:
+
+```bash
+sudo -u deploy /srv/server/bin/set-gate -n stundenanker 'anderes langes passwort'   # einschalten bzw. ändern
+sudo -u deploy /srv/server/bin/set-gate -n stundenanker                             # ausschalten
+```
+
+**Nur über die eigene Adresse (`exklusiv`):** Steht zusätzlich `exklusiv` in der Zeile, leitet `/<app>/` auf der IP bzw. Hauptdomain zur geschützten Adresse um. Sonst könnte man das Passwort über den alten Pfad umgehen. Das greift erst, sobald das Passwort gesetzt ist.
+
+Ohne Passwort erreichbar bleiben App-Beschreibung und Icons (zum Installieren der App) sowie `/<app>/impressum` und `/<app>/datenschutz`.
+
 ## Geheime Einstellungen einer App
 
 Eine Datei `.env` im App-Ordner auf dem Server wird beim Start gelesen und nie zu GitHub hochgeladen, z. B. der Einladungscode für Dart-Karriere:

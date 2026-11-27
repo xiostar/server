@@ -34,7 +34,7 @@
     const hex = [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
     const parts = location.hostname.split(".");
     const domain = parts.length >= 2 ? "; Domain=." + parts.slice(-2).join(".") : "";
-    document.cookie = "gate=" + hex + "; Max-Age=34560000; Path=/" + domain + "; Secure; SameSite=Lax";
+    document.cookie = "__COOKIE__=" + hex + "; Max-Age=34560000; Path=/" + domain + "; Secure; SameSite=Lax";
     try { sessionStorage.setItem("gate-try", "1"); } catch (x) {}
     location.reload();
   });

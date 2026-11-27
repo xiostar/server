@@ -2,3 +2,4 @@
 caddy/apps.caddy
 caddy/hosts.caddy
 caddy/www/
+caddy/gate-out/
